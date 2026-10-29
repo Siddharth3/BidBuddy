@@ -272,11 +272,11 @@ def generate_assistant_response(question):
     except Exception:
         # Continue to the web fallback if FAQ processing fails.
         except Exception:
-        logger.exception(
-            "FAQ_PROCESSING_ERROR question_id=%s",
-            question_id,
-        )
-        faq_result = None
+            logger.exception(
+                "FAQ_PROCESSING_ERROR question_id=%s",
+                question_id,
+            )
+            faq_result = None
 
     logger.info(
         "FAQ_RESULT question_id=%s matched=%s",

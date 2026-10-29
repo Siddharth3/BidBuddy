@@ -1,4 +1,4 @@
-
+scikit-learn
 streamlit
 requests
 pandas

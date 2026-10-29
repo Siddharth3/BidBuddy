@@ -3,7 +3,7 @@ import hashlib
 import html
 import ipaddress
 from pathlib import Path
-
+import uuid
 import requests
 import streamlit as st
 from github_logger import log_interaction
@@ -367,8 +367,9 @@ def generate_assistant_response(question):
     }
 
 
+
 def process_question(question):
-    """Add a question and its generated answer to the session history."""
+    """Generate an answer and log the interaction to GitHub."""
 
     question = question.strip()
 
@@ -385,6 +386,32 @@ def process_question(question):
 
     st.session_state.messages.append(response)
 
+    # Log the interaction to the GitHub Excel workbook.
+    try:
+        employee = st.session_state.employee or {}
+
+        source_urls = [
+            item.get("url", "")
+            for item in response.get("sources", [])
+            if isinstance(item, dict) and item.get("url")
+        ]
+
+        log_interaction(
+            user_name=employee.get("name", "Unknown"),
+            department=employee.get("department", "Unknown"),
+            conversation_id=st.session_state.conversation_id,
+            question=question,
+            answer=response.get("content", ""),
+            answer_type=response.get("answer_type", "unknown"),
+            sources=source_urls,
+        )
+
+        logger.info("GitHub conversation logging succeeded.")
+
+    except Exception:
+        # Logging failures should not stop the chatbot from answering.
+        logger.exception("GitHub conversation logging failed.")
+
 
 # ============================================================
 # 8. SESSION STATE
@@ -398,6 +425,9 @@ if "visitor_location" not in st.session_state:
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
+
+if "conversation_id" not in st.session_state:
+    st.session_state.conversation_id = str(uuid.uuid4())
 
 
 # ============================================================
@@ -586,6 +616,7 @@ else:
 
         if st.button("New chat", use_container_width=True):
             st.session_state.messages = []
+            st.session_state.conversation_id = str(uuid.uuid4())
             st.rerun()
 
         if st.button("Exit BidBuddy", use_container_width=True):

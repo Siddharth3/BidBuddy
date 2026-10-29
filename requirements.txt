@@ -4,3 +4,4 @@ requests
 pandas
 python-dotenv
 google-genai
+tavily-python

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import requests
 import streamlit as st
+from github_logger import log_interaction
 
 from faq_engine import find_faq, answer_with_web
 

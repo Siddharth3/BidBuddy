@@ -269,9 +269,9 @@ def generate_assistant_response(question):
             question_id,
         )
         faq_result = find_faq(question)
+        
     except Exception:
-        # Continue to the web fallback if FAQ processing fails.
-        except Exception:
+            # Continue to the web fallback if FAQ processing fails.
             logger.exception(
                 "FAQ_PROCESSING_ERROR question_id=%s",
                 question_id,

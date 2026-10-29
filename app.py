@@ -596,7 +596,7 @@ else:
         st.write(employee["name"])
         st.caption(employee["department"])
 
-        # location = st.session_state.visitor_location
+        location = st.session_state.visitor_location
 
         if location:
             st.divider()

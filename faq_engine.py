@@ -1,4 +1,5 @@
-
+import logging
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -11,6 +12,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from web_search import search_web
 
+logger = logging.getLogger("bidbuddy.faq")
 
 # ------------------------------------------------------------
 # CONFIGURATION

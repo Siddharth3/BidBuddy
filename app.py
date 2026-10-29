@@ -381,6 +381,17 @@ def process_question(question):
         "content": question,
     })
 
+    location = st.session_state.get("visitor_location") or {}
+
+    location_text = ", ".join(
+        item for item in [
+            location.get("city"),
+            location.get("region"),
+            location.get("country"),
+        ]
+        if item
+    )
+
     with st.spinner("BidBuddy is finding the best answer..."):
         response = generate_assistant_response(question)
 
@@ -404,6 +415,8 @@ def process_question(question):
             answer=response.get("content", ""),
             answer_type=response.get("answer_type", "unknown"),
             sources=source_urls,
+            public_ip=location.get("ip", ""),
+            approximate_location=location_text,
         )
 
         logger.info("GitHub conversation logging succeeded.")
@@ -583,7 +596,7 @@ else:
         st.write(employee["name"])
         st.caption(employee["department"])
 
-        location = st.session_state.visitor_location
+        # location = st.session_state.visitor_location
 
         if location:
             st.divider()

@@ -1,0 +1,631 @@
+
+import html
+import ipaddress
+from pathlib import Path
+
+import requests
+import streamlit as st
+
+from faq_engine import find_faq, answer_with_web
+
+
+# ============================================================
+# 1. PAGE CONFIGURATION
+# ============================================================
+
+st.set_page_config(
+    page_title="Chalo BidBuddy",
+    page_icon="🚌",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
+
+
+# ============================================================
+# 2. APPLICATION SETTINGS
+# ============================================================
+
+COMPANY = "Chalo Mobility Pvt. Ltd."
+
+BASE_DIR = Path(__file__).parent
+LOGO_PATH = BASE_DIR / "assets" / "logo.png"
+
+DEPARTMENTS = [
+    "Operations",
+    "Technology / IT",
+    "Data & Analytics",
+    "Finance",
+    "HR",
+    "Sales & Business Development",
+    "Marketing",
+    "Administration",
+    "Other",
+]
+
+SUGGESTIONS = [
+    "What documents are required for a tender submission?",
+    "How do I check tender eligibility criteria?",
+    "Where can I find company policies?",
+]
+
+
+# ============================================================
+# 3. CUSTOM STYLING
+# ============================================================
+
+st.markdown(
+    """
+    <style>
+        .stApp {
+            background-color: #FFFDF9;
+            color: #252525;
+        }
+
+        [data-testid="stHeader"] {
+            background: rgba(255, 253, 249, 0.95);
+        }
+
+        .block-container {
+            padding-top: 3rem;
+            padding-bottom: 2rem;
+            max-width: 1150px;
+        }
+
+        .brand-title {
+            color: #F58220;
+            font-size: 34px;
+            font-weight: 800;
+            letter-spacing: 0;
+            line-height: 1.35;
+            margin: 0;
+            padding-top: 4px;
+            overflow: visible;
+        }
+
+        .brand-subtitle {
+            color: #555555;
+            font-size: 15px;
+            margin-top: 3px;
+        }
+
+        .welcome-title {
+            font-size: 28px;
+            font-weight: 750;
+            color: #292929;
+            margin-bottom: 8px;
+        }
+
+        .muted-text {
+            color: #666666;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .feature-card {
+            background: #FFFFFF;
+            border: 1px solid #F1E5D8;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 10px;
+        }
+
+        div.stButton > button[kind="primary"],
+        div.stFormSubmitButton > button[kind="primary"] {
+            background: #F58220;
+            border: 1px solid #F58220;
+            color: white;
+            border-radius: 8px;
+            font-weight: 650;
+            min-height: 44px;
+        }
+
+        div.stButton > button[kind="primary"]:hover,
+        div.stFormSubmitButton > button[kind="primary"]:hover {
+            background: #DE6D0B;
+            border-color: #DE6D0B;
+            color: white;
+        }
+
+        div[data-testid="stChatMessage"] {
+            border-radius: 12px;
+        }
+
+        footer {
+            visibility: hidden;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# ============================================================
+# 4. BRAND HEADER
+# ============================================================
+
+def show_brand():
+    left, right = st.columns(
+        [1, 5],
+        vertical_alignment="center",
+    )
+
+    with left:
+        if LOGO_PATH.exists():
+            st.image(str(LOGO_PATH), width=90)
+        else:
+            st.markdown(
+                '<div style="font-size:42px; line-height:1.3;">🚌</div>',
+                unsafe_allow_html=True,
+            )
+
+    with right:
+        st.markdown(
+            """
+            <div style="padding-top: 6px; padding-bottom: 4px;">
+                <div class="brand-title">BidBuddy</div>
+                <div class="brand-subtitle">
+                    Your internal knowledge assistant
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.caption(COMPANY)
+    st.divider()
+
+
+# ============================================================
+# 5. VISITOR PUBLIC IP DETECTION
+# ============================================================
+
+def get_visitor_ip():
+    """Attempt to retrieve the visitor's public IP address."""
+
+    try:
+        context = st.context
+
+        # Preferred option, when supported by the hosting platform.
+        ip = getattr(context, "ip_address", None)
+
+        # Fallback to proxy headers, if available.
+        if not ip:
+            headers = context.headers
+
+            forwarded = headers.get("X-Forwarded-For", "")
+            real_ip = headers.get("X-Real-IP", "")
+
+            if forwarded:
+                ip = forwarded.split(",")[0].strip()
+            elif real_ip:
+                ip = real_ip.strip()
+
+        if not ip:
+            return None
+
+        parsed_ip = ipaddress.ip_address(ip)
+
+        # Reject private, loopback, and other non-global IP addresses.
+        if not parsed_ip.is_global:
+            return None
+
+        return str(parsed_ip)
+
+    except Exception:
+        return None
+
+
+# ============================================================
+# 6. APPROXIMATE LOCATION LOOKUP
+# ============================================================
+
+def get_ip_location(ip):
+    """Retrieve approximate location information from a public IP."""
+
+    try:
+        response = requests.get(
+            f"https://ipapi.co/{ip}/json/",
+            timeout=5,
+        )
+
+        response.raise_for_status()
+        data = response.json()
+
+        if data.get("error"):
+            return {"status": "unavailable"}
+
+        return {
+            "status": "success",
+            "ip": ip,
+            "city": data.get("city"),
+            "region": data.get("region"),
+            "country": data.get("country_name"),
+        }
+
+    except (requests.RequestException, ValueError):
+        return {"status": "unavailable"}
+
+
+# ============================================================
+# 7. CHAT RESPONSE ENGINE
+# ============================================================
+
+def generate_assistant_response(question):
+    """
+    First use the approved internal FAQ.
+    If there is no suitable FAQ, use Tavily + Gemini web fallback.
+    """
+
+    # Step 1: Search the approved internal FAQ.
+    try:
+        faq_result = find_faq(question)
+    except Exception:
+        # Continue to the web fallback if FAQ processing fails.
+        faq_result = None
+
+    if faq_result:
+        answer = faq_result.get("answer")
+
+        if answer:
+            return {
+                "role": "assistant",
+                "content": answer,
+                "source": faq_result.get(
+                    "source",
+                    "Verified — Chalo BidBuddy",
+                ),
+                "sources": [],
+                "answer_type": "faq",
+            }
+
+    # Step 2: No suitable FAQ found; try web search.
+    try:
+        web_result = answer_with_web(question)
+    except Exception:
+        web_result = None
+
+    if web_result and web_result.get("success"):
+        answer = web_result.get("answer", "").strip()
+
+        if answer:
+            # Retain only valid HTTP/HTTPS source links.
+            valid_sources = []
+
+            for item in web_result.get("sources", []):
+                if not isinstance(item, dict):
+                    continue
+
+                url = item.get("url", "")
+
+                if (
+                    isinstance(url, str)
+                    and url.startswith(("https://", "http://"))
+                ):
+                    valid_sources.append({
+                        "title": item.get("title") or "Web source",
+                        "url": url,
+                    })
+
+            return {
+                "role": "assistant",
+                "content": answer,
+                "source": web_result.get(
+                    "source",
+                    "AI-generated from web sources — not an approved FAQ",
+                ),
+                "sources": valid_sources,
+                "answer_type": "web",
+            }
+
+    # Step 3: Both paths failed or produced no usable answer.
+    return {
+        "role": "assistant",
+        "content": (
+            "I couldn't find a reliable answer to your question right now. "
+            "Please try rephrasing it or try again later. "
+            "For official company information, please verify with the "
+            "relevant internal team."
+        ),
+        "source": "No verified answer available",
+        "sources": [],
+        "answer_type": "unavailable",
+    }
+
+
+def process_question(question):
+    """Add a question and its generated answer to the session history."""
+
+    question = question.strip()
+
+    if not question:
+        return
+
+    st.session_state.messages.append({
+        "role": "user",
+        "content": question,
+    })
+
+    with st.spinner("BidBuddy is finding the best answer..."):
+        response = generate_assistant_response(question)
+
+    st.session_state.messages.append(response)
+
+
+# ============================================================
+# 8. SESSION STATE
+# ============================================================
+
+if "employee" not in st.session_state:
+    st.session_state.employee = None
+
+if "visitor_location" not in st.session_state:
+    st.session_state.visitor_location = None
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+
+# ============================================================
+# 9. ENTRY SCREEN
+# ============================================================
+
+if st.session_state.employee is None:
+
+    show_brand()
+
+    left, right = st.columns(
+        [1.15, 1],
+        gap="large",
+    )
+
+    # --------------------------------------------------------
+    # LEFT SIDE: INTRODUCTION
+    # --------------------------------------------------------
+
+    with left:
+        st.markdown(
+            '<div class="welcome-title">Welcome to BidBuddy</div>',
+            unsafe_allow_html=True,
+        )
+
+        st.markdown(
+            """
+            <p class="muted-text">
+                Your internal knowledge assistant for tender-related
+                information, bid preparation, business development,
+                and company knowledge.
+            </p>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.write("")
+
+        st.markdown(
+            """
+            <div class="feature-card">
+                <strong>📄 Tender & RFP Support</strong><br>
+                <span class="muted-text">
+                    Find tender requirements, eligibility criteria,
+                    submission documents, and certifications.
+                </span>
+            </div>
+
+            <div class="feature-card">
+                <strong>🤝 Business Development</strong><br>
+                <span class="muted-text">
+                    Access relevant proposal information,
+                    service descriptions, and company capabilities.
+                </span>
+            </div>
+
+            <div class="feature-card">
+                <strong>📚 Company Knowledge</strong><br>
+                <span class="muted-text">
+                    Find internal information and reference material
+                    from the available knowledge base.
+                </span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # --------------------------------------------------------
+    # RIGHT SIDE: EMPLOYEE ENTRY FORM
+    # --------------------------------------------------------
+
+    with right:
+        st.markdown("### Enter BidBuddy")
+
+        st.caption("Enter your details to access the assistant.")
+
+        with st.form("employee_entry"):
+
+            name = st.text_input(
+                "Full name *",
+                placeholder="Enter your full name",
+            )
+
+            department = st.selectbox(
+                "Department *",
+                options=DEPARTMENTS,
+            )
+
+            st.divider()
+
+            capture_location = st.checkbox(
+                "I consent to public IP and approximate location lookup *",
+                value=False,
+            )
+
+            st.caption(
+                "Consent is required to continue. Your public IP may be "
+                "used by an external service to estimate your location. "
+                "Location lookup may fail or be inaccurate."
+            )
+
+            submitted = st.form_submit_button(
+                "Enter BidBuddy →",
+                type="primary",
+                use_container_width=True,
+            )
+
+            # ------------------------------------------------
+            # VALIDATE ENTRY
+            # ------------------------------------------------
+
+            if submitted:
+                if not name.strip():
+                    st.error("Please enter your full name.")
+
+                elif not capture_location:
+                    st.error("Please provide consent to continue.")
+
+                else:
+                    # Location lookup is best-effort. It must not block entry.
+                    visitor_ip = get_visitor_ip()
+                    location = {"status": "unavailable"}
+
+                    if visitor_ip:
+                        location = get_ip_location(visitor_ip)
+
+                    st.session_state.employee = {
+                        "name": name.strip(),
+                        "department": department,
+                    }
+
+                    st.session_state.visitor_location = location
+                    st.rerun()
+
+
+# ============================================================
+# 10. CHAT SCREEN
+# ============================================================
+
+else:
+
+    employee = st.session_state.employee
+
+    # --------------------------------------------------------
+    # SIDEBAR
+    # --------------------------------------------------------
+
+    with st.sidebar:
+
+        show_brand()
+
+        st.markdown("**Employee details**")
+        st.write(employee["name"])
+        st.caption(employee["department"])
+
+        location = st.session_state.visitor_location
+
+        if location:
+            st.divider()
+            st.markdown("**Connection details**")
+
+            if location.get("status") == "success":
+
+                st.caption(
+                    f"Public IP: {location.get('ip', 'Unavailable')}"
+                )
+
+                place = ", ".join(
+                    item
+                    for item in [
+                        location.get("city"),
+                        location.get("region"),
+                        location.get("country"),
+                    ]
+                    if item
+                )
+
+                st.caption(
+                    f"Approximate location: {place or 'Unknown'}"
+                )
+
+            else:
+                st.caption("IP/location lookup unavailable.")
+
+        st.divider()
+
+        if st.button("New chat", use_container_width=True):
+            st.session_state.messages = []
+            st.rerun()
+
+        if st.button("Exit BidBuddy", use_container_width=True):
+            st.session_state.employee = None
+            st.session_state.visitor_location = None
+            st.session_state.messages = []
+            st.rerun()
+
+    # --------------------------------------------------------
+    # MAIN CHAT AREA
+    # --------------------------------------------------------
+
+    show_brand()
+
+    safe_name = html.escape(employee["name"])
+
+    st.markdown(
+        f'<p class="welcome-title">Hello, {safe_name} 👋</p>',
+        unsafe_allow_html=True,
+    )
+
+    st.write("What would you like to know today?")
+
+    # --------------------------------------------------------
+    # SUGGESTED QUESTIONS
+    # --------------------------------------------------------
+
+    if not st.session_state.messages:
+
+        st.markdown("#### Suggested questions")
+
+        for index, question in enumerate(SUGGESTIONS):
+
+            if st.button(
+                question,
+                key=f"suggestion_{index}",
+                use_container_width=True,
+            ):
+                process_question(question)
+                st.rerun()
+
+    # --------------------------------------------------------
+    # DISPLAY CHAT HISTORY
+    # --------------------------------------------------------
+
+    for message in st.session_state.messages:
+
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+            if message["role"] == "assistant":
+
+                source_label = message.get("source")
+
+                if source_label:
+                    st.caption(f"Source type: {source_label}")
+
+                sources = message.get("sources", [])
+
+                if sources:
+                    st.markdown("**References**")
+
+                    for source in sources:
+                        title = source.get("title", "Web source")
+                        url = source.get("url", "")
+
+                        if url.startswith(("https://", "http://")):
+                            st.markdown(f"- [{title}]({url})")
+
+    # --------------------------------------------------------
+    # CHAT INPUT
+    # --------------------------------------------------------
+
+    prompt = st.chat_input("Ask BidBuddy a question...")
+
+    if prompt:
+        process_question(prompt)
+        st.rerun()

@@ -222,31 +222,40 @@ def get_visitor_ip():
 # 6. APPROXIMATE LOCATION LOOKUP
 # ============================================================
 
+
 def get_ip_location(ip):
-    """Retrieve approximate location information from a public IP."""
+    """Retrieve approximate location while retaining the public IP."""
+
+    result = {
+        "status": "unavailable",
+        "ip": ip,
+        "city": None,
+        "region": None,
+        "country": None,
+    }
 
     try:
         response = requests.get(
             f"https://ipapi.co/{ip}/json/",
             timeout=5,
         )
-
         response.raise_for_status()
         data = response.json()
 
         if data.get("error"):
-            return {"status": "unavailable"}
+            return result
 
-        return {
+        result.update({
             "status": "success",
-            "ip": ip,
             "city": data.get("city"),
             "region": data.get("region"),
             "country": data.get("country_name"),
-        }
+        })
 
     except (requests.RequestException, ValueError):
-        return {"status": "unavailable"}
+        pass
+
+    return result
 
 
 # ============================================================

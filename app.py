@@ -1,4 +1,5 @@
-
+import logging
+import hashlib
 import html
 import ipaddress
 from pathlib import Path
@@ -8,6 +9,7 @@ import streamlit as st
 
 from faq_engine import find_faq, answer_with_web
 
+logger = logging.getLogger("bidbuddy.app")
 
 # ============================================================
 # 1. PAGE CONFIGURATION
@@ -258,15 +260,37 @@ def generate_assistant_response(question):
 
     # Step 1: Search the approved internal FAQ.
     try:
+        question_id = hashlib.sha256(
+            " ".join(question.lower().split()).encode("utf-8")
+        ).hexdigest()[:10]
+        
+        logger.info(
+            "RESPONSE_START question_id=%s",
+            question_id,
+        )
         faq_result = find_faq(question)
     except Exception:
         # Continue to the web fallback if FAQ processing fails.
+        except Exception:
+        logger.exception(
+            "FAQ_PROCESSING_ERROR question_id=%s",
+            question_id,
+        )
         faq_result = None
 
+    logger.info(
+        "FAQ_RESULT question_id=%s matched=%s",
+        question_id,
+        bool(faq_result),
+    )
     if faq_result:
         answer = faq_result.get("answer")
 
         if answer:
+            logger.info(
+                "RESPONSE_SOURCE question_id=%s source=faq",
+                question_id,
+            )
             return {
                 "role": "assistant",
                 "content": answer,
@@ -305,7 +329,12 @@ def generate_assistant_response(question):
                         "title": item.get("title") or "Web source",
                         "url": url,
                     })
-
+                    
+            logger.info(
+                "RESPONSE_SOURCE question_id=%s source=web",
+                question_id,
+            )
+            
             return {
                 "role": "assistant",
                 "content": answer,
@@ -318,6 +347,11 @@ def generate_assistant_response(question):
             }
 
     # Step 3: Both paths failed or produced no usable answer.
+    logger.warning(
+        "RESPONSE_SOURCE question_id=%s source=unavailable",
+        question_id,
+    )
+
     return {
         "role": "assistant",
         "content": (

@@ -45,12 +45,6 @@ DEPARTMENTS = [
     "Other",
 ]
 
-SUGGESTIONS = [
-    "What documents are required for a tender submission?",
-    "How do I check tender eligibility criteria?",
-    "Where can I find company policies?",
-]
-
 
 # ============================================================
 # 3. CUSTOM STYLING
@@ -666,6 +660,8 @@ else:
     # SUGGESTED QUESTIONS
     # --------------------------------------------------------
 
+    st.markdown("#### Suggested questions")
+    
     suggested_questions = [
         "Do we need an internet connection to run the ETIM?",
         "How are emergency alerts triggered, escalated, and resolved through the system?",

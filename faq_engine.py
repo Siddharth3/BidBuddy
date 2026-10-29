@@ -73,11 +73,21 @@ def load_faqs():
     return df
 
 
+def question_fingerprint(question):
+    """Identify the same question without logging its text."""
+    normalized = " ".join(question.lower().split())
+    return hashlib.sha256(
+        normalized.encode("utf-8")
+    ).hexdigest()[:10]
+
 # ------------------------------------------------------------
 # LOCAL TEXT MATCHING
 # ------------------------------------------------------------
 
+
 def find_faq_tfidf(question, df, min_score=0.45):
+    fingerprint = question_fingerprint(question)
+
     try:
         vectorizer = TfidfVectorizer(
             lowercase=True,
@@ -95,15 +105,39 @@ def find_faq_tfidf(question, df, min_score=0.45):
         ).flatten()
 
         if len(scores) == 0:
+            logger.warning(
+                "TFIDF_EMPTY_SCORES question_id=%s",
+                fingerprint,
+            )
             return None
 
         best_index = int(scores.argmax())
         best_score = float(scores[best_index])
 
+        logger.info(
+            "TFIDF_RESULT question_id=%s faq_count=%s "
+            "best_index=%s best_score=%.4f threshold=%.2f",
+            fingerprint,
+            len(df),
+            best_index,
+            best_score,
+            min_score,
+        )
+
         if best_score < min_score:
+            logger.info(
+                "TFIDF_NO_MATCH question_id=%s",
+                fingerprint,
+            )
             return None
 
         row = df.iloc[best_index]
+
+        logger.info(
+            "TFIDF_MATCH question_id=%s faq_index=%s",
+            fingerprint,
+            best_index,
+        )
 
         return {
             "category": str(row["category"]),
@@ -114,7 +148,10 @@ def find_faq_tfidf(question, df, min_score=0.45):
         }
 
     except ValueError:
-        # For example, the FAQ questions may contain no usable terms.
+        logger.exception(
+            "TFIDF_VALUE_ERROR question_id=%s",
+            fingerprint,
+        )
         return None
 
 
@@ -123,12 +160,18 @@ def find_faq_tfidf(question, df, min_score=0.45):
 # ------------------------------------------------------------
 
 def find_faq_gemini(question, df):
+    fingerprint = question_fingerprint(question)
+    
     """
     Return an approved FAQ match, a no-match decision,
     or None if Gemini could not make a reliable decision.
     """
 
     if client is None:
+        logger.warning(
+            "GEMINI_NOT_CONFIGURED question_id=%s",
+            fingerprint,
+        )
         return None
 
     faq_records = [
@@ -165,6 +208,13 @@ Available FAQs:
             contents=prompt,
         )
 
+        logger.info(
+            "GEMINI_REQUEST question_id=%s faq_count=%s model=%s",
+            fingerprint,
+            len(faq_records),
+            GEMINI_MODEL,
+        )
+
         raw_text = (response.text or "").strip()
 
         if raw_text.startswith("```"):
@@ -175,6 +225,13 @@ Available FAQs:
             ).strip()
 
         result = json.loads(raw_text)
+
+        logger.info(
+            "GEMINI_DECISION question_id=%s match=%s faq_id=%s",
+            fingerprint,
+            result.get("match"),
+            result.get("faq_id"),
+        )
 
         if result.get("match") is False:
             return {"decision": "no_match"}
@@ -203,6 +260,10 @@ Available FAQs:
 
     except Exception:
         # A Gemini error should not crash the chatbot.
+        logger.exception(
+            "GEMINI_ERROR question_id=%s",
+            fingerprint,
+        )
         return None
 
 
@@ -210,27 +271,72 @@ Available FAQs:
 # MAIN FAQ SEARCH
 # ------------------------------------------------------------
 
+
 def find_faq(question):
     question = question.strip()
 
     if not question:
+        logger.warning("EMPTY_QUESTION")
         return None
+
+    fingerprint = question_fingerprint(question)
+
+    logger.info(
+        "FAQ_SEARCH_START question_id=%s",
+        fingerprint,
+    )
 
     df = load_faqs()
 
-    # First, try Gemini to identify the right approved FAQ.
+    logger.info(
+        "FAQ_DATA_LOADED question_id=%s rows=%s",
+        fingerprint,
+        len(df),
+    )
+
     result = find_faq_gemini(question, df)
 
     if result is not None:
         if result.get("decision") == "no_match":
-            # Gemini explicitly determined that no FAQ answers it.
+            logger.info(
+                "FAQ_NO_MATCH_GEMINI question_id=%s",
+                fingerprint,
+            )
             return None
 
+        logger.info(
+            "FAQ_MATCHED question_id=%s method=%s",
+            fingerprint,
+            result.get("match_method"),
+        )
         return result
 
-    # Use text similarity only if Gemini was unavailable or failed
-    # to produce a valid decision.
-    return find_faq_tfidf(question, df, min_score=0.45)
+    logger.info(
+        "FAQ_GEMINI_UNAVAILABLE_OR_FAILED "
+        "question_id=%s; trying TF-IDF",
+        fingerprint,
+    )
+
+    result = find_faq_tfidf(
+        question,
+        df,
+        min_score=0.45,
+    )
+
+    if result is None:
+        logger.info(
+            "FAQ_FINAL_NO_MATCH question_id=%s",
+            fingerprint,
+        )
+    else:
+        logger.info(
+            "FAQ_MATCHED question_id=%s method=%s",
+            fingerprint,
+            result.get("match_method"),
+        )
+
+    return result
+
 
 
 # ------------------------------------------------------------

@@ -17,7 +17,7 @@ logger = logging.getLogger("bidbuddy.app")
 # ============================================================
 
 st.set_page_config(
-    page_title="Chalo BidBuddy",
+    page_title="Chalo BDBuddy",
     page_icon="🚌",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -165,7 +165,7 @@ def show_brand():
         st.markdown(
             """
             <div style="padding-top: 6px; padding-bottom: 4px;">
-                <div class="brand-title">BidBuddy</div>
+                <div class="brand-title">BDBuddy</div>
                 <div class="brand-subtitle">
                     Your internal knowledge assistant
                 </div>
@@ -306,7 +306,7 @@ def generate_assistant_response(question):
                 "content": answer,
                 "source": faq_result.get(
                     "source",
-                    "Verified — Chalo BidBuddy",
+                    "Verified — Chalo BDBuddy",
                 ),
                 "sources": [],
                 "answer_type": "faq",
@@ -401,7 +401,7 @@ def process_question(question):
         if item
     )
 
-    with st.spinner("BidBuddy is finding the best answer..."):
+    with st.spinner("BDBuddy is finding the best answer..."):
         response = generate_assistant_response(question)
 
     st.session_state.messages.append(response)
@@ -471,7 +471,7 @@ if st.session_state.employee is None:
 
     with left:
         st.markdown(
-            '<div class="welcome-title">Welcome to BidBuddy</div>',
+            '<div class="welcome-title">Welcome to BDBuddy</div>',
             unsafe_allow_html=True,
         )
 
@@ -522,7 +522,7 @@ if st.session_state.employee is None:
     # --------------------------------------------------------
 
     with right:
-        st.markdown("### Enter BidBuddy")
+        st.markdown("### Enter BDBuddy")
 
         st.caption("Enter your details to access the assistant.")
 
@@ -552,7 +552,7 @@ if st.session_state.employee is None:
             )
 
             submitted = st.form_submit_button(
-                "Enter BidBuddy →",
+                "Enter BDBuddy →",
                 type="primary",
                 use_container_width=True,
             )
@@ -641,7 +641,7 @@ else:
             st.session_state.conversation_id = str(uuid.uuid4())
             st.rerun()
 
-        if st.button("Exit BidBuddy", use_container_width=True):
+        if st.button("Exit BDBuddy", use_container_width=True):
             st.session_state.employee = None
             st.session_state.visitor_location = None
             st.session_state.messages = []
@@ -666,19 +666,19 @@ else:
     # SUGGESTED QUESTIONS
     # --------------------------------------------------------
 
-    if not st.session_state.messages:
-
-        st.markdown("#### Suggested questions")
-
-        for index, question in enumerate(SUGGESTIONS):
-
-            if st.button(
-                question,
-                key=f"suggestion_{index}",
-                use_container_width=True,
-            ):
-                process_question(question)
-                st.rerun()
+    suggested_questions = [
+        "Do we need an internet connection to run the ETIM?",
+        "How are emergency alerts triggered, escalated, and resolved through the system?",
+        "How many people use the Chalo App?",
+        "How global is Chalo’s presence?"
+    ]
+    
+    for question in suggested_questions:
+        st.markdown(
+            f"<div style='padding: 8px 0; color: #555; "
+            f"font-size: 14px;'>{html.escape(question)}</div>",
+            unsafe_allow_html=True,
+        )
 
     # --------------------------------------------------------
     # DISPLAY CHAT HISTORY
@@ -712,7 +712,7 @@ else:
     # CHAT INPUT
     # --------------------------------------------------------
 
-    prompt = st.chat_input("Ask BidBuddy a question...")
+    prompt = st.chat_input("Ask BDBuddy a question...")
 
     if prompt:
         process_question(prompt)

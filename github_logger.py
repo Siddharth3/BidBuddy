@@ -72,6 +72,8 @@ def log_interaction(
             "Answer",
             "Answer Type",
             "Sources",
+            "Public IP",
+            "Approximate Location",
         ])
 
     else:
@@ -92,6 +94,8 @@ def log_interaction(
             "Answer",
             "Answer Type",
             "Sources",
+            "Public IP",
+            "Approximate Location",
         ])
 
     source_text = (
